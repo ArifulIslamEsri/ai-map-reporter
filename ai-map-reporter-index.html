@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Map Reporter — ArcGIS Maps SDK JS 5.0</title>
+
+  <!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  ArcGIS Maps SDK for JavaScript — v5.0                          ║
+  ║  Single script tag loads: core, map-components, ai-components,  ║
+  ║  calcite-components, charts-components, coding-components       ║
+  ╚══════════════════════════════════════════════════════════════════╝
+  -->
+  <script type="module" src="https://js.arcgis.com/5.0/"></script>
+  <link rel="stylesheet" href="https://js.arcgis.com/5.0/esri/themes/dark/main.css" />
+
+  <style>
+    /* ═══════════════════════════════════════════════════════
+       THEME: Deep space — near-black + electric cyan + gold
+       Font: system monospace for a terminal/AI aesthetic
+    ═══════════════════════════════════════════════════════ */
+    :root {
+      --bg:        #05070f;
+      --surface:   #090d1e;
+      --surface2:  #0e1428;
+      --border:    rgba(0,224,255,0.15);
+      --border2:   rgba(0,224,255,0.07);
+      --cyan:      #00e0ff;
+      --cyan-dim:  rgba(0,224,255,0.08);
+      --gold:      #ffd166;
+      --gold-dim:  rgba(255,209,102,0.1);
+      --text:      #c8e0ea;
+      --text-dim:  #4a6a7a;
+      --text-mute: #1e3040;
+      --red:       #ff6b6b;
+      --green:     #06d6a0;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; overflow: hidden; }
+
+    /* ── App shell ── */
+    #app { display: flex; height: 100vh; width: 100vw; }
+
+    /* ── Left panel ── */
+    #panel {
+      width: 320px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 20;
+    }
+
+    /* ── Header ── */
+    #header {
+      padding: 18px 18px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    #header::before {
+      content: '';
+      position: absolute;
+      top: -30px; right: -30px;
+      width: 120px; height: 120px;
+      background: radial-gradient(circle, rgba(0,224,255,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .header-eyebrow {
+      font-size: 8.5px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-eyebrow::before {
+      content: '';
+      width: 16px; height: 1px;
+      background: var(--cyan);
+      display: inline-block;
+    }
+
+    #header h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.02em;
+      line-height: 1.25;
+      margin-bottom: 6px;
+    }
+
+    #header h1 em { color: var(--cyan); font-style: normal; }
+
+    #header p {
+      font-size: 9.5px;
+      color: var(--text-dim);
+      line-height: 1.65;
+    }
+
+    /* ── Voice toggle ── */
+    #voice-row {
+      padding: 10px 18px;
+      border-bottom: 1px solid var(--border2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface2);
+    }
+
+    .voice-label {
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .voice-label .icon { font-size: 13px; }
+
+    #voice-toggle {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+    }
+
+    #voice-switch {
+      width: 34px; height: 18px;
+      background: var(--text-mute);
+      border-radius: 9px;
+      position: relative;
+      transition: background 0.2s;
+      border: 1px solid var(--border);
+    }
+
+    #voice-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+    }
+
+    #voice-toggle.on #voice-switch { background: var(--cyan); border-color: var(--cyan); }
+    #voice-toggle.on #voice-switch::after { transform: translateX(16px); }
+
+    .voice-status {
+      font-size: 8px;
+      letter-spacing: 0.1em;
+      color: var(--text-mute);
+    }
+
+    #voice-toggle.on .voice-status { color: var(--cyan); }
+
+    /* ── Speaking indicator ── */
+    #speaking-bar {
+      display: none;
+      padding: 8px 18px;
+      background: var(--gold-dim);
+      border-bottom: 1px solid rgba(255,209,102,0.2);
+      align-items: center;
+      gap: 8px;
+    }
+
+    #speaking-bar.visible { display: flex; }
+
+    .speak-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--gold);
+      animation: pulse 0.8s ease-in-out infinite alternate;
+    }
+
+    .speak-dot:nth-child(2) { animation-delay: 0.15s; }
+    .speak-dot:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes pulse {
+      from { opacity: 0.3; transform: scaleY(0.6); }
+      to   { opacity: 1;   transform: scaleY(1.4); }
+    }
+
+    #speaking-text {
+      font-size: 9px;
+      color: var(--gold);
+      letter-spacing: 0.08em;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #stop-speak {
+      font-size: 8px;
+      color: var(--gold);
+      cursor: pointer;
+      background: none;
+      border: 1px solid rgba(255,209,102,0.3);
+      border-radius: 2px;
+      padding: 2px 6px;
+      font-family: inherit;
+      letter-spacing: 0.08em;
+    }
+
+    #stop-speak:hover { background: var(--gold-dim); }
+
+    /* ── Transcript log ── */
+    #log-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 0;
+    }
+
+    #log-wrap::-webkit-scrollbar { width: 3px; }
+    #log-wrap::-webkit-scrollbar-track { background: transparent; }
+    #log-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .log-entry {
+      padding: 8px 18px;
+      border-left: 2px solid transparent;
+      animation: entryIn 0.25s ease both;
+    }
+
+    @keyframes entryIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    .log-entry.user  { border-left-color: var(--cyan); }
+    .log-entry.agent { border-left-color: var(--gold); background: rgba(255,209,102,0.025); }
+
+    .log-role {
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+
+    .log-entry.user  .log-role { color: var(--cyan); }
+    .log-entry.agent .log-role { color: var(--gold); }
+
+    .log-msg {
+      font-size: 10.5px;
+      color: var(--text);
+      line-height: 1.65;
+    }
+
+    /* ── Credential banner ── */
+    #cred-banner {
+      margin: 12px;
+      padding: 12px 14px;
+      background: rgba(255,107,107,0.07);
+      border: 1px solid rgba(255,107,107,0.25);
+      border-left: 3px solid var(--red);
+      border-radius: 3px;
+      font-size: 10px;
+      color: #c88;
+      line-height: 1.65;
+    }
+
+    #cred-banner strong { color: var(--red); display: block; margin-bottom: 4px; }
+    #cred-banner code { background: rgba(255,107,107,0.1); padding: 1px 4px; border-radius: 2px; font-size: 9.5px; }
+    #cred-banner.hidden { display: none; }
+
+    /* ── Ready banner ── */
+    #ready-banner {
+      margin: 12px;
+      padding: 10px 14px;
+      background: rgba(6,214,160,0.07);
+      border: 1px solid rgba(6,214,160,0.2);
+      border-left: 3px solid var(--green);
+      border-radius: 3px;
+      font-size: 10px;
+      color: #7dcbb8;
+      line-height: 1.6;
+      display: none;
+    }
+
+    #ready-banner strong { color: var(--green); display: block; margin-bottom: 3px; }
+
+    /* ── Suggested prompts ── */
+    #prompts {
+      padding: 0 12px 12px;
+    }
+
+    .prompt-label {
+      font-size: 8px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-mute);
+      margin-bottom: 6px;
+      padding: 0 6px;
+    }
+
+    .prompt-chip {
+      display: block;
+      width: 100%;
+      text-align: left;
+      font-family: inherit;
+      font-size: 9.5px;
+      color: var(--text-dim);
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 2px;
+      padding: 6px 10px;
+      cursor: pointer;
+      margin-bottom: 5px;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      line-height: 1.5;
+    }
+
+    .prompt-chip:hover {
+      color: var(--text);
+      border-color: var(--border);
+      background: var(--cyan-dim);
+    }
+
+    .prompt-chip::before { content: '↗ '; color: var(--cyan); font-size: 9px; }
+
+    /* ── Map area ── */
+    #map-wrap {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+
+    arcgis-map {
+      flex: 1;
+      width: 100%;
+    }
+
+    /* arcgis-assistant panel — position it inside the map area */
+    arcgis-assistant {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 380px;
+      max-height: calc(100vh - 80px);
+      z-index: 10;
+      --calcite-color-brand: var(--cyan);
+    }
+
+    /* ── SDK version badge ── */
+    #sdk-badge {
+      position: absolute;
+      bottom: 36px;
+      left: 12px;
+      background: rgba(5,7,15,0.85);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 4px 10px;
+      font-size: 8.5px;
+      color: var(--text-dim);
+      letter-spacing: 0.1em;
+      z-index: 5;
+      backdrop-filter: blur(6px);
+    }
+
+    #sdk-badge span { color: var(--cyan); }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ══════════════════════════════════════
+       LEFT PANEL
+  ══════════════════════════════════════ -->
+  <div id="panel">
+
+    <div id="header">
+      <div class="header-eyebrow">ArcGIS Maps SDK JS · v5.0 · Beta</div>
+      <h1>AI Map<br/><em>Reporter</em></h1>
+      <p>Ask natural language questions about the map data. The AI agent answers — and optionally speaks the response aloud via the browser's Web Speech API.</p>
+    </div>
+
+    <!-- Voice toggle -->
+    <div id="voice-row">
+      <div class="voice-label">
+        <span class="icon">🔊</span>
+        Voice Narration
+      </div>
+      <div id="voice-toggle" onclick="toggleVoice()">
+        <div id="voice-switch"></div>
+        <span class="voice-status" id="voice-status-text">OFF</span>
+      </div>
+    </div>
+
+    <!-- Speaking indicator -->
+    <div id="speaking-bar">
+      <div class="speak-dot"></div>
+      <div class="speak-dot"></div>
+      <div class="speak-dot"></div>
+      <span id="speaking-text">Speaking...</span>
+      <button id="stop-speak" onclick="stopSpeaking()">Stop</button>
+    </div>
+
+    <!-- Credential banner (shown when config not set) -->
+    <div id="cred-banner">
+      <strong>⚠ Credentials Required</strong>
+      Open this file and fill in the <code>CONFIG</code> block at the top of the
+      <code>&lt;script&gt;</code> section with your:<br/>
+      <br/>
+      · <code>portalUrl</code> — your ArcGIS Online org URL<br/>
+      · <code>oauthAppId</code> — registered OAuth app Client ID<br/>
+      · <code>webMapId</code> — a web map item ID from your org<br/>
+      <br/>
+      AI components require a signed-in named user account (ArcGIS Online org, not trial/public).
+    </div>
+
+    <!-- Ready banner (shown when configured) -->
+    <div id="ready-banner">
+      <strong>✓ Ready</strong>
+      Credentials loaded. Sign in to activate the AI agent. Use the chat panel on the map or try a suggested prompt below.
+    </div>
+
+    <!-- Transcript log -->
+    <div id="log-wrap">
+      <div id="log-list"></div>
+    </div>
+
+    <!-- Suggested prompts -->
+    <div id="prompts">
+      <div class="prompt-label">Try asking</div>
+      <button class="prompt-chip" onclick="sendPrompt(this)">What city has the largest population?</button>
+      <button class="prompt-chip" onclick="sendPrompt(this)">How many cities are in California?</button>
+      <button class="prompt-chip" onclick="sendPrompt(this)">Show only cities with population over 500,000</button>
+      <button class="prompt-chip" onclick="sendPrompt(this)">What cities are within 50 miles of Chicago?</button>
+      <button class="prompt-chip" onclick="sendPrompt(this)">Zoom to the state of Texas</button>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════
+       MAP + AI ASSISTANT
+  ══════════════════════════════════════ -->
+  <div id="map-wrap">
+    <!--
+      arcgis-map: set item-id to your web map once credentials are configured.
+      Falls back to basemap-only map if no itemId provided.
+    -->
+    <arcgis-map id="the-map" basemap="dark-gray-vector" zoom="4" center="-98.5795,39.8283">
+      <arcgis-zoom position="bottom-right"></arcgis-zoom>
+    </arcgis-map>
+
+    <!--
+      arcgis-assistant: the AI chat component (SDK 5.0 beta).
+      Agents are registered via JavaScript below once credentials are set.
+      Hidden until credentials are configured.
+    -->
+    <arcgis-assistant id="ai-assistant" style="display:none;"></arcgis-assistant>
+
+    <div id="sdk-badge">ArcGIS Maps SDK JS · <span>v5.0</span> · AI Components Beta</div>
+  </div>
+
+</div>
+
+<script type="module">
+// ════════════════════════════════════════════════════════════════════
+//  ██████╗ ██████╗ ███╗   ██╗███████╗██╗ ██████╗
+// ██╔════╝██╔═══██╗████╗  ██║██╔════╝██║██╔════╝
+// ██║     ██║   ██║██╔██╗ ██║█████╗  ██║██║  ███╗
+// ██║     ██║   ██║██║╚██╗██║██╔══╝  ██║██║   ██║
+// ╚██████╗╚██████╔╝██║ ╚████║██║     ██║╚██████╔╝
+//  ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝     ╚═╝ ╚═════╝
+//
+//  FILL IN YOUR CREDENTIALS BELOW TO ACTIVATE THE AI AGENT
+//  ─────────────────────────────────────────────────────────
+//  Requirements:
+//  • ArcGIS Online org account (not trial, not public)
+//  • OAuth app registered at developers.arcgis.com
+//  • A web map item ID in your org that contains feature layers
+//    (e.g. the USA Cities layer from sampleserver6)
+// ════════════════════════════════════════════════════════════════════
+
+const CONFIG = {
+  // Your ArcGIS Online organization URL
+  // Example: "https://myorg.maps.arcgis.com"
+  portalUrl: "",
+
+  // OAuth 2.0 Client ID from developers.arcgis.com
+  // Register your app and add your redirect URI there
+  // Example: "ABCdef123456"
+  oauthAppId: "",
+
+  // Item ID of a web map in your org that contains feature layers
+  // Example: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+  webMapId: "",
+};
+
+// ════════════════════════════════════════════════════════════════════
+//  DO NOT EDIT BELOW THIS LINE
+// ════════════════════════════════════════════════════════════════════
+
+// ── Voice state ───────────────────────────────────────────────────
+let voiceEnabled = false;
+
+window.toggleVoice = function() {
+  voiceEnabled = !voiceEnabled;
+  const toggle = document.getElementById("voice-toggle");
+  const status = document.getElementById("voice-status-text");
+  toggle.classList.toggle("on", voiceEnabled);
+  status.textContent = voiceEnabled ? "ON" : "OFF";
+  if (!voiceEnabled) stopSpeaking();
+};
+
+window.stopSpeaking = function() {
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  document.getElementById("speaking-bar").classList.remove("visible");
+};
+
+function speak(text) {
+  if (!voiceEnabled || !("speechSynthesis" in window)) return;
+  stopSpeaking();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate  = 0.95;
+  utterance.pitch = 1.0;
+  utterance.lang  = "en-US";
+
+  // Try to pick a good voice
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v =>
+    v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Alex")
+  );
+  if (preferred) utterance.voice = preferred;
+
+  // Show speaking indicator
+  const bar = document.getElementById("speaking-bar");
+  const txt = document.getElementById("speaking-text");
+  bar.classList.add("visible");
+  txt.textContent = text.length > 60 ? text.slice(0, 60) + "…" : text;
+
+  utterance.onend = () => bar.classList.remove("visible");
+  utterance.onerror = () => bar.classList.remove("visible");
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// ── Log a message to the transcript panel ────────────────────────
+function logMessage(role, text) {
+  const list = document.getElementById("log-list");
+  const entry = document.createElement("div");
+  entry.className = `log-entry ${role}`;
+  entry.innerHTML = `
+    <div class="log-role">${role === "user" ? "You" : "AI Agent"}</div>
+    <div class="log-msg">${text}</div>
+  `;
+  list.appendChild(entry);
+  entry.scrollIntoView({ behavior: "smooth" });
+}
+
+// ── Suggested prompt click ────────────────────────────────────────
+window.sendPrompt = function(btn) {
+  const text = btn.textContent.replace("↗ ", "").trim();
+  const assistant = document.getElementById("ai-assistant");
+
+  logMessage("user", text);
+
+  // If the assistant component is active, dispatch the message to it
+  if (assistant && typeof assistant.sendMessage === "function") {
+    assistant.sendMessage(text);
+  } else {
+    logMessage("agent", "⚠ AI agent not active. Configure credentials in the CONFIG block to enable.");
+  }
+};
+
+// ── Check credentials and set up the app ─────────────────────────
+const isConfigured = CONFIG.portalUrl && CONFIG.oauthAppId && CONFIG.webMapId;
+
+document.getElementById("cred-banner").classList.toggle("hidden", isConfigured);
+if (isConfigured) {
+  document.getElementById("ready-banner").style.display = "block";
+}
+
+// ── Load SDK modules ──────────────────────────────────────────────
+const [
+  esriConfig,
+  OAuthInfo,
+  IdentityManager,
+  DataExplorationAgent,
+] = await Promise.all([
+  $arcgis.import("esri/config"),
+  $arcgis.import("esri/identity/OAuthInfo"),
+  $arcgis.import("esri/identity/IdentityManager"),
+  // AI components are available as web components — import the agent class
+  // for registering with arcgis-assistant
+  isConfigured
+    ? $arcgis.import("esri/ai/agents/DataExplorationAgent")
+    : Promise.resolve(null),
+]).catch(() => [null, null, null, null]);
+
+if (!isConfigured || !esriConfig) {
+  console.warn("AI Map Reporter: Configure credentials in the CONFIG block to activate the AI agent.");
+} else {
+
+  // ── Set portal URL ──────────────────────────────────────────────
+  esriConfig.portalUrl = CONFIG.portalUrl;
+
+  // ── Register OAuth ──────────────────────────────────────────────
+  const oauthInfo = new OAuthInfo({
+    appId:    CONFIG.oauthAppId,
+    flowType: "authorization-code",
+    popup:    false,
+  });
+  IdentityManager.registerOAuthInfos([oauthInfo]);
+
+  // ── Set web map on the arcgis-map component ─────────────────────
+  const mapEl = document.getElementById("the-map");
+  mapEl.setAttribute("item-id", CONFIG.webMapId);
+
+  // ── Set up arcgis-assistant once map is ready ───────────────────
+  mapEl.addEventListener("arcgisViewReadyChange", async (event) => {
+    if (!event.detail.ready) return;
+
+    const view = event.target.view;
+
+    // Register the Data Exploration Agent
+    const assistant = document.getElementById("ai-assistant");
+    assistant.style.display = "";
+
+    if (DataExplorationAgent) {
+      const agent = new DataExplorationAgent({ view });
+      assistant.agents = [agent];
+    }
+
+    assistant.view = view;
+
+    // ── Listen for AI responses and speak them ────────────────────
+    assistant.addEventListener("arcgisAssistantMessage", (e) => {
+      const msg = e.detail;
+      if (msg.role === "assistant" && msg.content) {
+        logMessage("agent", msg.content);
+        speak(msg.content);
+      } else if (msg.role === "user" && msg.content) {
+        logMessage("user", msg.content);
+      }
+    });
+
+    logMessage("agent", "Map loaded. I can help you explore the data. Try asking a question or click a suggested prompt on the left.");
+    speak("Map loaded and ready. Ask me anything about the data.");
+  });
+
+  // ── Sign in check ───────────────────────────────────────────────
+  try {
+    await IdentityManager.checkSignInStatus(CONFIG.portalUrl + "/sharing");
+  } catch {
+    // Will prompt on first data access — that's expected
+    console.log("AI Map Reporter: User not yet signed in. Will prompt on first interaction.");
+  }
+}
+</script>
+</body>
+</html>
